@@ -2,7 +2,6 @@ use std::{net::TcpStream, io::Read};
 use bitreader::BitReader;
 
 fn main() -> Result<(), std::io::Error> {
-    println!("Hello, world!");
     let mut client = TcpStream::connect("localhost:30005")?;
     let mut buf = [0u8; 512];
 
@@ -17,19 +16,12 @@ fn main() -> Result<(), std::io::Error> {
             let mut skip_rssi = skip_timestamp.skip(1);
             let dfca = skip_rssi.next().unwrap().clone();
             if dfca == 0x8d {
-                // let icao = skip_rssi.take(3);
-                // print!("icao: ");
-                // for byte in icao {
-                //     print!("{:02x}", byte);
-                // }
-                // println!();
                 let mut skip_icao = skip_rssi.skip(3);
                 let tc_ca = skip_icao.next().unwrap().clone();
-                println!("{} {}", tc_ca >> 3, tc_ca << 5);
+                // println!("TC CA: {} {}", tc_ca >> 3, tc_ca << 5);
                 if (1..=4).contains(&(tc_ca >> 3)) && tc_ca << 5 == 0 {
                     let callsign = skip_icao.take(8).copied().collect::<Vec<u8>>();
                     let mut br = BitReader::new(&callsign);
-                    // print!("callsign: {}", String::from_utf8_lossy(&callsign));
                     let mut buf = [0u8; 8];
                     for i in 0..8 {
                         let b = br.read_u8(6).expect("bitreader error");
@@ -40,8 +32,7 @@ fn main() -> Result<(), std::io::Error> {
                         }
                     }
                     
-                    print!("callsign: {} ", core::str::from_utf8(&buf).expect("utf8 error"));
-                    print!("raw: {:?}", buf);
+                    print!("callsign: {} ",core::str::from_utf8(&buf).expect("utf8 error"));
                     
                     println!();
                 }
