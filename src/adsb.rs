@@ -1,4 +1,4 @@
-use nom::{IResult, bytes::complete::{take, tag}, bits, sequence::{tuple}, combinator::{recognize}, Err, multi::count, Finish, error::{ParseError, ErrorKind}};
+use nom::{IResult, bytes::complete::{take, tag}, bits, sequence::{tuple}, combinator::{recognize}, Err, multi::count, Finish};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -77,7 +77,9 @@ fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
 }
 
 pub fn parse_adsb_frame(input: &[u8]) -> Result<ADSBFrame> {
-    let frame = adsb_frame(input).finish().map(|(_, frame)| frame).map_err(|_| "invalid ads-b frame")?;
+    let frame = adsb_frame(input).finish()
+        .map(|(_, frame)| frame)
+        .map_err(|_| "invalid ads-b frame")?;
     Ok(frame)
 }
 

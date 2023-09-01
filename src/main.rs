@@ -1,7 +1,5 @@
 use std::{net::TcpStream, io::Read};
 
-
-
 mod adsb;
 
 fn main() -> Result<(), std::io::Error> {
@@ -11,9 +9,7 @@ fn main() -> Result<(), std::io::Error> {
     loop {
         let _n = client.read(&mut buf)?;
         if let Ok(frame) =  adsb::parse_adsb_frame(&buf) {
-            println!("{:?}", frame);
+           dbg!(frame);
         }
     }
-
-    // Ok(())
 }
