@@ -1,5 +1,8 @@
 use std::{net::TcpStream, io::Read};
 use bitreader::BitReader;
+use nom;
+
+mod parse;
 
 fn main() -> Result<(), std::io::Error> {
     let mut client = TcpStream::connect("localhost:30005")?;
