@@ -3,21 +3,6 @@
 version = 3
 
 [[package]]
-name = "bitreader"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f10043e4864d975e7f197f993ec4018636ad93946724b2571c4474d51845869b"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
-name = "cfg-if"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
 name = "memchr"
 version = "2.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -43,6 +28,5 @@ dependencies = [
 name = "parser"
 version = "0.1.0"
 dependencies = [
- "bitreader",
  "nom",
 ]
