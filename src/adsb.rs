@@ -1,6 +1,6 @@
 
 
-use nom::{IResult, bytes::complete::{take, tag}, bits, sequence::{preceded, tuple}, combinator::{cond, rest, all_consuming, recognize}, Err, multi::count, Finish, error::{ParseError, ErrorKind}};
+use nom::{IResult, bytes::complete::{take, tag}, bits, sequence::{tuple}, combinator::{recognize}, Err, multi::count, Finish, error::{ParseError, ErrorKind}};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -22,20 +22,20 @@ pub struct ADSBFrame {
 struct AdsbParseError(String);
 
 impl<I> ParseError<I> for AdsbParseError {
-    fn from_error_kind(input: I, kind: ErrorKind) -> Self {
+    fn from_error_kind(_input: I, _kind: ErrorKind) -> Self {
         AdsbParseError("not an ads-b frame".into())
     }
 
     // if combining multiple errors, we show them one after the other
-    fn append(input: I, kind: ErrorKind, other: Self) -> Self {
+    fn append(_input: I, _kind: ErrorKind, other: Self) -> Self {
         other
     }
 
-    fn from_char(input: I, c: char) -> Self {
+    fn from_char(_input: I, _c: char) -> Self {
         AdsbParseError("not an ads-b frame".into())
     }
 
-    fn or(self, other: Self) -> Self {
+    fn or(self, _other: Self) -> Self {
         AdsbParseError("not an ads-b frame".into())
     }
 }
@@ -103,7 +103,7 @@ fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, AdsbParseError> {
 
 pub fn parse_adsb_frame(input: &[u8]) -> Result<ADSBFrame> {
     let frame = adsb_frame(input).finish().map(|(_, frame)| frame).map_err(|e| e.0)?;
-    return Ok(frame)
+    Ok(frame)
 }
 
 #[cfg(test)]
