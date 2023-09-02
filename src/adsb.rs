@@ -1,10 +1,19 @@
-use nom::{IResult, bytes::complete::{take, tag}, bits, sequence::{tuple}, combinator::{recognize}, Err, multi::count, Finish};
+use std::ops::Range;
+
+use nom::{
+    bits,
+    bytes::complete::{tag, take},
+    combinator::recognize,
+    multi::count,
+    sequence::tuple,
+    Err, Finish, IResult,
+};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-const ADS_B_DOWNLINK_FORMAT: u8 = 17;
+const ADS_B_DOWNLINK_FORMAT: Range<u8> = 17..19;
 const ADS_B_CAPABILITY: u8 = 5;
-const TYPECODE_IDENTIFICATION: u8 = 4;
+const TYPECODE_IDENTIFICATION: Range<u8> = 1..5;
 
 #[derive(Debug)]
 pub struct ADSBFrame {
@@ -29,9 +38,11 @@ fn df_ca(input: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8), ()> {
 
 fn icao(input: &[u8]) -> IResult<&[u8], String, ()> {
     let (input, icao) = take(3u8)(input)?;
-    Ok((input, format!("{:02x}{:02x}{:02x}", icao[0], icao[1], icao[2])))
+    Ok((
+        input,
+        format!("{:02x}{:02x}{:02x}", icao[0], icao[1], icao[2]),
+    ))
 }
-
 
 fn callsign(input: &[u8]) -> IResult<&[u8], String, ()> {
     // https://mode-s.org/decode/content/ads-b/2-identification.html
@@ -42,7 +53,10 @@ fn callsign(input: &[u8]) -> IResult<&[u8], String, ()> {
             *chunk |= 0x40;
         }
     });
-    Ok((input, String::from_utf8_lossy(&chunks).trim_end().to_owned()))
+    Ok((
+        input,
+        String::from_utf8_lossy(&chunks).trim_end().to_owned(),
+    ))
 }
 
 fn typecode_category(input: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8), ()> {
@@ -52,32 +66,35 @@ fn typecode_category(input: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8),
     Ok(((input, offset), (tc, ca)))
 }
 
-
 fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
     let (input, _) = header(input)?;
     let ((input, _), df_ca) = df_ca((input, 0))?;
-    if df_ca != (ADS_B_DOWNLINK_FORMAT, ADS_B_CAPABILITY) {
+    if !ADS_B_DOWNLINK_FORMAT.contains(&df_ca.0) {
         return Err(Err::Failure(()));
     }
 
     let (input, icao) = icao(input)?;
     let ((input, _), tc_ca) = typecode_category((input, 0))?;
-    if tc_ca.0 != TYPECODE_IDENTIFICATION {
+    if !TYPECODE_IDENTIFICATION.contains(&tc_ca.0) {
         return Err(Err::Failure(()));
     }
 
     let (input, callsign) = callsign(input)?;
-    Ok((input, ADSBFrame {
-        downlink_fmt: df_ca.0,
-        capability: df_ca.1,
-        icao,
-        typecode: tc_ca.0,
-        callsign,
-    }))
+    Ok((
+        input,
+        ADSBFrame {
+            downlink_fmt: df_ca.0,
+            capability: df_ca.1,
+            icao,
+            typecode: tc_ca.0,
+            callsign,
+        },
+    ))
 }
 
 pub fn parse_adsb_frame(input: &[u8]) -> Result<ADSBFrame> {
-    let frame = adsb_frame(input).finish()
+    let frame = adsb_frame(input)
+        .finish()
         .map(|(_, frame)| frame)
         .map_err(|_| "invalid ads-b frame")?;
     Ok(frame)
@@ -112,14 +129,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_callsign()  {
+    fn test_parse_callsign() {
         let input = [0x2C, 0xC3, 0x71, 0xC3, 0x2C, 0xE0];
         assert_ok_eq!(callsign(&input), "KLM1023");
     }
 
     #[test]
-    fn test_parse_adsb_frame()  {
-        let input = [0x1a, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8d, 0x84, 0x1b, 0xd1, 0x20, 0x2C, 0xC3, 0x71, 0xC3, 0x2C, 0xE0];
+    fn test_parse_adsb_frame() {
+        let input = [
+            0x1a, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8d, 0x84, 0x1b, 0xd1, 0x20,
+            0x2C, 0xC3, 0x71, 0xC3, 0x2C, 0xE0,
+        ];
         let result = adsb_frame(&input);
         assert_ok_eq!(&result, _);
         let frame = result.unwrap().1;
