@@ -23,16 +23,17 @@ type Callsign = String;
 
 #[derive(Debug)]
 pub struct ADSBFrame {
-    downlink_format: u8,
-    capability: u8,
-    icao: String,
-    payload: AdsbMessage,
+    pub downlink_format: u8,
+    pub capability: u8,
+    pub icao: String,
+    pub payload: AdsbMessage,
 }
 
 #[derive(Debug)]
-enum AdsbMessage {
+pub enum AdsbMessage {
     Identification(Callsign),
-    Altitude(usize),
+    BarometricAltitude(f64),
+    GNSSAltitude(usize),
     Unknown(u8),
 }
 
@@ -86,7 +87,7 @@ fn aircraft_category(input: (&[u8], usize)) -> IResult<(&[u8], usize), u8, ()> {
 fn identification(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     let ((_, offset), tc) = typecode((input, 0))?;
     if !TYPECODE_IDENTIFICATION_RANGE.contains(&tc) {
-        return Err(Err::Failure(()));
+        return Err(Err::Error(()));
     }
 
     let ((input, _), _) = aircraft_category((input, offset))?;
@@ -103,16 +104,27 @@ fn unknown(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
 fn barometric_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     use nom::bits::complete::take;
 
+    const ALTITUDE_BITS: u8 = 12u8;
+
     let ((_, offset), tc) = typecode((input, 0))?;
     if !TYPECODE_POSITION_BAROMETRIC_RANGE.contains(&tc) {
-        return Err(Err::Failure(()));
+        return Err(Err::Error(()));
     }
 
     // Skip surveillance status and single antenna flag
     let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
-    let ((input, _), alt) = take(12u8)((input, offset))?;
+    let ((input, _), alt) = take::<_, u16, _, _>(ALTITUDE_BITS)((input, offset))?;
+    let q = (alt >> 8) & 1;
+    let alt = remove_nth_bit(alt, 8);
 
-    Ok((input, AdsbMessage::Altitude(alt)))
+    // TODO: Parse altitudes for q=1 (> 50175ft) using Gray code
+    match q {
+        1 => {
+            let ft: f64 = (alt as f64) * 25.0 - 1000.0;
+            Ok((input, AdsbMessage::BarometricAltitude(ft * 0.3048)))
+        }
+        _ => Err(Err::Error(())),
+    }
 }
 
 // https://mode-s.org/decode/content/ads-b/3-airborne-position.html#altitude-decoding
@@ -121,14 +133,14 @@ fn gnss_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
 
     let ((_, offset), tc) = typecode((input, 0))?;
     if !TYPECODE_POSITION_GNSS_RANGE.contains(&tc) {
-        return Err(Err::Failure(()));
+        return Err(Err::Error(()));
     }
 
     // Skip surveillance status and single antenna flag
     let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
     let ((input, _), alt) = take(12u8)((input, offset))?;
 
-    Ok((input, AdsbMessage::Altitude(alt)))
+    Ok((input, AdsbMessage::GNSSAltitude(alt)))
 }
 
 fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
@@ -150,6 +162,12 @@ fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
             payload,
         },
     ))
+}
+
+fn remove_nth_bit(input: u16, n: u8) -> u16 {
+    let upper = input & (0xffff << n);
+    let lower = input & ((1 << n) - 1);
+    (upper >> 1) | lower
 }
 
 pub fn parse_adsb_frame(input: &[u8]) -> Result<ADSBFrame> {
