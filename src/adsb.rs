@@ -115,7 +115,7 @@ fn barometric_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
     let ((input, _), alt) = take::<_, u16, _, _>(ALTITUDE_BITS)((input, offset))?;
     let q = (alt >> 8) & 1;
-    let alt = remove_nth_bit(alt, 8);
+    let alt = remove_nth_bit(alt, 4);
 
     // TODO: Parse altitudes for q=1 (> 50175ft) using Gray code
     match q {
@@ -165,7 +165,7 @@ fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
 }
 
 fn remove_nth_bit(input: u16, n: u8) -> u16 {
-    let upper = input & (0xffff << n);
+    let upper = input & (0xfffe << n);
     let lower = input & ((1 << n) - 1);
     (upper >> 1) | lower
 }
