@@ -1,5 +1,4 @@
-use core::fmt;
-use std::{collections::HashMap, io::Read, io::Write, net::TcpStream};
+use std::{io::Read, io::Write, net::TcpStream};
 use tabwriter::TabWriter;
 
 mod adsb;
