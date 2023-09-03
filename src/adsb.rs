@@ -4,7 +4,7 @@ use nom::{
     bits,
     branch::alt,
     bytes::complete::{tag, take},
-    combinator::{all_consuming, recognize},
+    combinator::recognize,
     multi::count,
     sequence::tuple,
     Err, Finish, IResult,
