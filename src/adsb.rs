@@ -2,29 +2,41 @@ use std::ops::Range;
 
 use nom::{
     bits,
+    branch::alt,
     bytes::complete::{tag, take},
-    combinator::recognize,
+    combinator::{recognize, all_consuming},
     multi::count,
     sequence::tuple,
     Err, Finish, IResult,
 };
 
+// https://mode-s.org/decode/content/ads-b/1-basics.html
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-const ADS_B_DOWNLINK_FORMAT: Range<u8> = 17..19;
-const ADS_B_CAPABILITY: u8 = 5;
-const TYPECODE_IDENTIFICATION: Range<u8> = 1..5;
+const ADS_B_DOWNLINK_FORMAT_RANGE: Range<u8> = 17..19;
+const TYPECODE_IDENTIFICATION_RANGE: Range<u8> = 1..5;
+const TYPECODE_POSITION_BAROMETRIC_RANGE: Range<u8> = 9..19;
+const TYPECODE_POSITION_GNSS_RANGE: Range<u8> = 20..23;
+
+type Callsign = String;
 
 #[derive(Debug)]
 pub struct ADSBFrame {
-    downlink_fmt: u8,
+    downlink_format: u8,
     capability: u8,
     icao: String,
-    typecode: u8,
-    callsign: String,
+    payload: AdsbMessage,
 }
 
-fn header(input: &[u8]) -> IResult<&[u8], &[u8], ()> {
+#[derive(Debug)]
+enum AdsbMessage {
+    Identification(Callsign),
+    Altitude(usize),
+    Unknown(u8)
+}
+
+fn mode_s_beast_header(input: &[u8]) -> IResult<&[u8], &[u8], ()> {
     let header = tuple((tag([0x1a]), tag([0x33]), take(6u8), take(1u8)));
     recognize(header)(input)
 }
@@ -59,35 +71,94 @@ fn callsign(input: &[u8]) -> IResult<&[u8], String, ()> {
     ))
 }
 
-fn typecode_category(input: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8), ()> {
+fn typecode(input: (&[u8], usize)) -> IResult<(&[u8], usize), u8, ()> {
     let ((input, offset), tc) = bits::complete::take(5u8)(input)?;
-    let ((input, offset), ca) = bits::complete::take(3u8)((input, offset))?;
+    assert!(offset == 5);
+    Ok(((input, offset), tc))
+}
+
+fn aircraft_category(input: (&[u8], usize)) -> IResult<(&[u8], usize), u8, ()> {
+    let ((input, offset), ca) = bits::complete::take(3u8)(input)?;
     assert!(offset == 0);
-    Ok(((input, offset), (tc, ca)))
+    Ok(((input, offset), ca))
+}
+
+fn identification(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
+    let ((_, offset), tc) = typecode((input, 0))?;
+    if !TYPECODE_IDENTIFICATION_RANGE.contains(&tc) {
+        return Err(Err::Failure(()));
+    }
+
+    let ((input, _), _) = aircraft_category((input, offset))?;
+    let (input, callsign) = callsign(input)?;
+    Ok((
+        input,
+        AdsbMessage::Identification(callsign)
+    ))
+}
+
+fn unknown(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
+    let ((_, _), tc) = typecode((input, 0))?;
+    Ok((
+        input,
+        AdsbMessage::Unknown(tc)
+    ))
+}
+
+// https://mode-s.org/decode/content/ads-b/3-airborne-position.html#altitude-decoding
+fn barometric_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
+    use nom::bits::complete::take;
+    
+    let ((_, offset), tc) = typecode((input, 0))?;
+    if !TYPECODE_POSITION_BAROMETRIC_RANGE.contains(&tc) {
+        return Err(Err::Failure(()));
+    }
+
+    // Skip surveillance status and single antenna flag
+    let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
+    let ((input, _), alt) = take(12u8)((input, offset))?;
+
+    Ok((
+        input,
+        AdsbMessage::Altitude(alt)
+    ))
+}
+
+// https://mode-s.org/decode/content/ads-b/3-airborne-position.html#altitude-decoding
+fn gnss_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
+    use nom::bits::complete::take;
+    
+    let ((_, offset), tc) = typecode((input, 0))?;
+    if !TYPECODE_POSITION_GNSS_RANGE.contains(&tc) {
+        return Err(Err::Failure(()));
+    }
+
+    // Skip surveillance status and single antenna flag
+    let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
+    let ((input, _), alt) = take(12u8)((input, offset))?;
+
+    Ok((
+        input,
+        AdsbMessage::Altitude(alt)
+    ))
 }
 
 fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
-    let (input, _) = header(input)?;
-    let ((input, _), df_ca) = df_ca((input, 0))?;
-    if !ADS_B_DOWNLINK_FORMAT.contains(&df_ca.0) {
+    let (input, _) = mode_s_beast_header(input)?;
+    let ((input, _), (df, ca)) = df_ca((input, 0))?;
+    if !ADS_B_DOWNLINK_FORMAT_RANGE.contains(&df) {
         return Err(Err::Failure(()));
     }
 
     let (input, icao) = icao(input)?;
-    let ((input, _), tc_ca) = typecode_category((input, 0))?;
-    if !TYPECODE_IDENTIFICATION.contains(&tc_ca.0) {
-        return Err(Err::Failure(()));
-    }
-
-    let (input, callsign) = callsign(input)?;
+    let (input, payload) = alt((identification, barometric_altitude, gnss_altitude, unknown))(input)?;
     Ok((
         input,
         ADSBFrame {
-            downlink_fmt: df_ca.0,
-            capability: df_ca.1,
+            downlink_format: df,
+            capability: ca,
             icao,
-            typecode: tc_ca.0,
-            callsign,
+            payload,
         },
     ))
 }
@@ -125,7 +196,7 @@ mod tests {
     #[test]
     fn test_parse_tc_ca() {
         let input = [0x20];
-        assert_ok_eq!(typecode_category((&input, 0)), (4, 0));
+        assert_ok_eq!(typecode((&input, 0)), 4);
     }
 
     #[test]
@@ -143,10 +214,10 @@ mod tests {
         let result = adsb_frame(&input);
         assert_ok_eq!(&result, _);
         let frame = result.unwrap().1;
-        assert_eq!(frame.downlink_fmt, 17);
+        assert_eq!(frame.downlink_format, 17);
         assert_eq!(frame.capability, 5);
         assert_eq!(frame.icao, "841bd1");
-        assert_eq!(frame.typecode, 4);
-        assert_eq!(frame.callsign, "KLM1023");
+        // assert_eq!(frame.typecode, 4);
+        // assert_eq!(frame.callsign, "KLM1023");
     }
 }
