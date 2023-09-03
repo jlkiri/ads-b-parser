@@ -4,7 +4,7 @@ use nom::{
     bits,
     branch::alt,
     bytes::complete::{tag, take},
-    combinator::{recognize, all_consuming},
+    combinator::{all_consuming, recognize},
     multi::count,
     sequence::tuple,
     Err, Finish, IResult,
@@ -33,7 +33,7 @@ pub struct ADSBFrame {
 enum AdsbMessage {
     Identification(Callsign),
     Altitude(usize),
-    Unknown(u8)
+    Unknown(u8),
 }
 
 fn mode_s_beast_header(input: &[u8]) -> IResult<&[u8], &[u8], ()> {
@@ -91,24 +91,18 @@ fn identification(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
 
     let ((input, _), _) = aircraft_category((input, offset))?;
     let (input, callsign) = callsign(input)?;
-    Ok((
-        input,
-        AdsbMessage::Identification(callsign)
-    ))
+    Ok((input, AdsbMessage::Identification(callsign)))
 }
 
 fn unknown(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     let ((_, _), tc) = typecode((input, 0))?;
-    Ok((
-        input,
-        AdsbMessage::Unknown(tc)
-    ))
+    Ok((input, AdsbMessage::Unknown(tc)))
 }
 
 // https://mode-s.org/decode/content/ads-b/3-airborne-position.html#altitude-decoding
 fn barometric_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     use nom::bits::complete::take;
-    
+
     let ((_, offset), tc) = typecode((input, 0))?;
     if !TYPECODE_POSITION_BAROMETRIC_RANGE.contains(&tc) {
         return Err(Err::Failure(()));
@@ -118,16 +112,13 @@ fn barometric_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
     let ((input, _), alt) = take(12u8)((input, offset))?;
 
-    Ok((
-        input,
-        AdsbMessage::Altitude(alt)
-    ))
+    Ok((input, AdsbMessage::Altitude(alt)))
 }
 
 // https://mode-s.org/decode/content/ads-b/3-airborne-position.html#altitude-decoding
 fn gnss_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     use nom::bits::complete::take;
-    
+
     let ((_, offset), tc) = typecode((input, 0))?;
     if !TYPECODE_POSITION_GNSS_RANGE.contains(&tc) {
         return Err(Err::Failure(()));
@@ -137,10 +128,7 @@ fn gnss_altitude(input: &[u8]) -> IResult<&[u8], AdsbMessage, ()> {
     let ((input, offset), _) = tuple::<_, (u8, u8), _, _>((take(2u8), take(1u8)))((input, offset))?;
     let ((input, _), alt) = take(12u8)((input, offset))?;
 
-    Ok((
-        input,
-        AdsbMessage::Altitude(alt)
-    ))
+    Ok((input, AdsbMessage::Altitude(alt)))
 }
 
 fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
@@ -151,7 +139,8 @@ fn adsb_frame(input: &[u8]) -> IResult<&[u8], ADSBFrame, ()> {
     }
 
     let (input, icao) = icao(input)?;
-    let (input, payload) = alt((identification, barometric_altitude, gnss_altitude, unknown))(input)?;
+    let (input, payload) =
+        alt((identification, barometric_altitude, gnss_altitude, unknown))(input)?;
     Ok((
         input,
         ADSBFrame {
