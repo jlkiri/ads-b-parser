@@ -60,7 +60,7 @@ fn main() -> Result<(), std::io::Error> {
 
             let tabbed = tabbed
                 .into_iter()
-                .map(|(icao, (cs, alt))| Tab(icao.clone(), cs.clone(), alt.clone()).to_string())
+                .map(|(icao, (cs, alt))| Tab(icao.clone(), cs.clone(), *alt).to_string())
                 .collect::<Vec<_>>();
             let tabbed = tabbed.join("\n");
 
