@@ -43,8 +43,10 @@ fn mode_s_beast_header(input: &[u8]) -> IResult<&[u8], &[u8], ()> {
 }
 
 fn df_ca(input: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8), ()> {
-    let ((input, offset), df) = bits::complete::take(5u8)(input)?;
-    let ((input, offset), ca) = bits::complete::take(3u8)((input, offset))?;
+    use nom::bits::complete::take;
+
+    let ((input, offset), df) = take(5u8)(input)?;
+    let ((input, offset), ca) = take(3u8)((input, offset))?;
     assert!(offset == 0);
     Ok(((input, offset), (df, ca)))
 }
