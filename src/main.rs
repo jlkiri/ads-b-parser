@@ -16,12 +16,12 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut buf = [0u8; 512];
     loop {
-       let _ = client.read(&mut buf)?;
+        let _ = client.read(&mut buf)?;
         if let Ok(frame) = adsb::parse_adsb_frame(&buf) {
             if matches!(frame.payload, adsb::AdsbMessage::Unknown(_)) {
                 continue;
             }
-            
+
             table.insert(frame);
 
             let mut tw = TabWriter::new(vec![]);
